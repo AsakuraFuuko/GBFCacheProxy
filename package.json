@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "http-proxy-agent": "^4.0.1",
+    "mime": "^2.4.4",
+    "mkdirp": "^1.0.3"
+  }
+}
