@@ -5,8 +5,8 @@ const mkdirp = require('mkdirp');
 const zlib = require("zlib");
 const HttpProxyAgent = require('http-proxy-agent');
 
-const cache_path = process.ENV.CACHE_DIR || 'cache';
-const proxy_url = process.ENV.PROXY || '';
+const cache_path = process.env.CACHE_DIR || 'cache';
+const proxy_url = process.env.PROXY || '';
 
 const handler = function (req, res, next) {
     console.log(req.url);
