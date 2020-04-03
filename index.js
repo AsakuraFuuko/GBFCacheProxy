@@ -5,8 +5,8 @@ const mkdirp = require('mkdirp');
 const zlib = require("zlib");
 const HttpProxyAgent = require('http-proxy-agent');
 
-const cache_path = 'cache';
-const proxy_url = process.ENV.proxy || '';
+const cache_path = process.ENV.CACHE_DIR || 'cache';
+const proxy_url = process.ENV.PROXY || '';
 
 const handler = function (req, res, next) {
     console.log(req.url);
@@ -71,11 +71,7 @@ const handler = function (req, res, next) {
             return args
         }
     }).then((args) => {
-        res.writeHead(200, Object.assign({
-            'cache-control': 'no-cache, no-store, must-revalidate',
-            'pragma': 'no-cache',
-            'expires': 0
-        }, args.headers));
+        res.writeHead(200, args.headers);
         args.body.pipe(res)
     }).catch((err) => {
         console.log(err)
