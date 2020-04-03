@@ -9,4 +9,6 @@ RUN npm install
 COPY . .
 
 EXPOSE 2333
+ENV proxy ''
+
 CMD [ "node", "index.js" ]

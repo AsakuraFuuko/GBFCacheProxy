@@ -6,6 +6,7 @@ const zlib = require("zlib");
 const HttpProxyAgent = require('http-proxy-agent');
 
 const cache_path = 'cache';
+const proxy_url = process.ENV.proxy || '';
 
 const handler = function (req, res, next) {
     console.log(req.url);
@@ -25,11 +26,12 @@ const handler = function (req, res, next) {
                 return {forced: true}
             }
             console.log('hit: ', path);
-            return new Promise(resolve => http.get(req.url, {
+            const options = {
                 method: 'head',
-                headers: req.headers,
-                agent: new HttpProxyAgent('http://127.0.0.1:1087')
-            }, resolve)).then(async (proxyRes) => {
+                headers: req.headers
+            };
+            if (!!proxy_url) options.agent = new HttpProxyAgent(proxy_url);
+            return new Promise(resolve => http.get(req.url, options, resolve)).then(async (proxyRes) => {
                 let headers = JSON.parse(fs.readFileSync(path + '.header').toString());
                 let local_time = new Date(headers['last-modified']).getTime();
                 let remote_time = new Date(proxyRes.headers['last-modified']).getTime();
@@ -48,10 +50,11 @@ const handler = function (req, res, next) {
         }
     }).then((args) => {
         if (args.forced) {
-            return new Promise(resolve => http.get(req.url, {
+            const options = {
                 headers: req.headers,
-                agent: new HttpProxyAgent('http://127.0.0.1:1087')
-            }, resolve)).then(async (proxyRes) => {
+            };
+            if (!!proxy_url) options.agent = new HttpProxyAgent(proxy_url);
+            return new Promise(resolve => http.get(req.url, options, resolve)).then(async (proxyRes) => {
                 console.log(req.url);
                 if (proxyRes.headers['content-encoding'] && proxyRes.headers['content-encoding'] === 'gzip') {
                     await proxyRes.pipe(zlib.createGunzip()).pipe(fs.createWriteStream(path))
