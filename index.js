@@ -5,7 +5,6 @@ const fs = require('fs');
 const url = require('parse-url');
 const mkdirp = require('mkdirp');
 const zlib = require("zlib");
-const stream = require('stream');
 const HttpProxyAgent = require('http-proxy-agent');
 
 const cache_path = process.env.CACHE_DIR || 'cache';
@@ -16,7 +15,7 @@ const blacklist = [
     'game.granbluefantasy.jp'
 ];
 
-const handler = function (req, res, next) {
+const handler = function (req, res) {
     console.log(req.method, ' ', req.url);
 
     if (use_translate && req.url.match(/^http:\/\/(game-a3\.granbluefantasy\.jp|gbf\.game-a3\.mbga\.jp)\/assets(_en)?\/\d+\/js[^\/]*\/config\.js$/g)) {
@@ -43,14 +42,13 @@ const handler = function (req, res, next) {
                 return {forced: true}
             }
             console.log('hit: ', path1);
-            let u = url(req.url);
             const options = {
                 method: 'HEAD',
                 headers: req.headers
             };
             if (!!proxy_url) options.agent = new HttpProxyAgent(proxy_url);
             return new Promise(resolve => {
-                let client = http.request(req.url, options, async (proxyRes) => {
+                let client = http.request(req.url, options, (proxyRes) => {
                     let headers = JSON.parse(fs.readFileSync(path1 + '.header').toString());
                     let local_time = new Date(headers['last-modified']).getTime();
                     let remote_time = new Date(proxyRes.headers['last-modified']).getTime();
@@ -58,6 +56,7 @@ const handler = function (req, res, next) {
                     let remote_size = parseInt(proxyRes.headers['content-length']);
                     if (proxyRes.statusCode === 304 || local_time >= remote_time && local_size === remote_size) {
                         headers['content-length'] = fs.statSync(path1)['size'];
+                        delete headers['content-encoding'];
                         proxyRes.destroy();
                         resolve({body: fs.createReadStream(path1), headers, forced: false, code: 200})
                     } else {
@@ -78,25 +77,31 @@ const handler = function (req, res, next) {
             };
             if (!!proxy_url) options.agent = new HttpProxyAgent(proxy_url);
             if (req.method.toLowerCase() === 'get') {
-                return new Promise((resolve, reject) => {
+                return new Promise((resolve) => {
                     http.get(req.url, options, async (proxyRes) => {
                         let headers = JSON.parse(JSON.stringify(proxyRes.headers));
-                        if (!(blacklist.includes(host) || req.method.toLowerCase() === 'post' || path1.endsWith('/'))) {
+                        if (!(blacklist.includes(host) || path1.endsWith('/'))) {
+                            let stream;
                             if (proxyRes.headers['content-encoding'] && proxyRes.headers['content-encoding'] === 'gzip') {
-                                await proxyRes.pipe(zlib.createGunzip()).pipe(fs.createWriteStream(path1))
+                                stream = proxyRes.pipe(zlib.createGunzip()).pipe(fs.createWriteStream(path1));
                                 delete headers['content-encoding'];
                             } else {
-                                await proxyRes.pipe(fs.createWriteStream(path1))
+                                stream = proxyRes.pipe(fs.createWriteStream(path1))
                             }
-                            fs.writeFileSync(path1 + '.header', JSON.stringify(headers, ' ', 2));
-                            console.log('saved: ', path1);
+                            stream.on('finish', () => {
+                                fs.writeFileSync(path1 + '.header', JSON.stringify(headers, ' ', 2));
+                                console.log('saved: ', path1);
+                                headers['content-length'] = fs.statSync(path1)['size'];
+                                resolve({body: fs.createReadStream(path1), headers: headers, code: proxyRes.statusCode})
+                            })
+                        } else {
+                            resolve({body: proxyRes, headers: headers, code: proxyRes.statusCode})
                         }
-                        resolve({body: proxyRes, headers: proxyRes.headers, code: proxyRes.statusCode})
                     });
                 })
             } else {
                 options.method = req.method;
-                return new Promise((resolve, reject) => {
+                return new Promise((resolve) => {
                     let client = http.request(req.url, options, async (proxyRes) => {
                         resolve({body: proxyRes, headers: proxyRes.headers, code: proxyRes.statusCode})
                     });
@@ -116,14 +121,14 @@ const handler = function (req, res, next) {
     })
 };
 
-const connect = function (cReq, cSock, head) {
+const connect = function (cReq, cSock) {
     console.log(cReq.method, ' ', cReq.url);
     let u = url(cReq.url);
     let pSock = net.connect(u.port, u.resource, function () {
         cSock.write('HTTP/1.1 200 Connection Established\r\n\r\n');
         pSock.pipe(cSock);
         cSock.pipe(pSock);
-    }).on('error', function (e) {
+    }).on('error', function () {
         cSock.end();
     });
 };
