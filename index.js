@@ -80,6 +80,9 @@ const handler = function (req, res, next) {
                     }
                     let headers = JSON.parse(JSON.stringify(proxyRes.headers));
                     delete headers['content-encoding'];
+                    delete headers['proxy-connection'];
+                    delete headers['connection'];
+                    delete headers['keep-alive'];
                     fs.writeFileSync(path1 + '.header', JSON.stringify(headers, ' ', 2));
                     console.log('saved: ', path1);
                 }
