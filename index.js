@@ -58,11 +58,11 @@ const handler = function (req, res, next) {
                     let remote_size = parseInt(proxyRes.headers['content-length']);
                     if (proxyRes.statusCode === 304 || local_time >= remote_time && local_size === remote_size) {
                         headers['content-length'] = fs.statSync(path1)['size'];
-                        client.destroy();
+                        proxyRes.destroy();
                         resolve({body: fs.createReadStream(path1), headers, forced: false, code: 200})
                     } else {
                         console.log('update: ', path1);
-                        client.destroy();
+                        proxyRes.destroy();
                         resolve({forced: true})
                     }
                 });
