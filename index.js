@@ -5,6 +5,7 @@ const fs = require('fs');
 const url = require('parse-url');
 const mkdirp = require('mkdirp');
 const zlib = require("zlib");
+const stream = require('stream');
 const HttpProxyAgent = require('http-proxy-agent');
 
 const cache_path = process.env.CACHE_DIR || 'cache';
@@ -38,30 +39,34 @@ const handler = function (req, res, next) {
     }
     new Promise((resolve => fs.exists(path1, resolve))).then((exists) => {
         if (exists) {
-            if (blacklist.includes(host) || req.method.toLowerCase() === 'post' || path1.endsWith('/')) {
+            if (blacklist.includes(host) || req.method.toLowerCase() !== 'get' || path1.endsWith('/')) {
                 return {forced: true}
             }
             console.log('hit: ', path1);
+            let u = url(req.url);
             const options = {
-                method: 'head',
+                method: 'HEAD',
                 headers: req.headers
             };
             if (!!proxy_url) options.agent = new HttpProxyAgent(proxy_url);
-            return new Promise(resolve => http.get(req.url, options, resolve)).then(async (proxyRes) => {
-                let headers = JSON.parse(fs.readFileSync(path1 + '.header').toString());
-                let local_time = new Date(headers['last-modified']).getTime();
-                let remote_time = new Date(proxyRes.headers['last-modified']).getTime();
-                let local_size = parseInt(headers['content-length']);
-                let remote_size = parseInt(proxyRes.headers['content-length']);
-                if (proxyRes.statusCode === 304 || local_time >= remote_time && local_size === remote_size) {
-                    headers['content-length'] = fs.statSync(path1)['size'];
-                    proxyRes.destroy();
-                    return {body: fs.createReadStream(path1), headers, forced: false};
-                } else {
-                    proxyRes.destroy();
-                    console.log('update: ', path1);
-                    return {forced: true}
-                }
+            return new Promise(resolve => {
+                let client = http.request(req.url, options, async (proxyRes) => {
+                    let headers = JSON.parse(fs.readFileSync(path1 + '.header').toString());
+                    let local_time = new Date(headers['last-modified']).getTime();
+                    let remote_time = new Date(proxyRes.headers['last-modified']).getTime();
+                    let local_size = parseInt(headers['content-length']);
+                    let remote_size = parseInt(proxyRes.headers['content-length']);
+                    if (proxyRes.statusCode === 304 || local_time >= remote_time && local_size === remote_size) {
+                        headers['content-length'] = fs.statSync(path1)['size'];
+                        client.destroy();
+                        resolve({body: fs.createReadStream(path1), headers, forced: false, code: 200})
+                    } else {
+                        console.log('update: ', path1);
+                        client.destroy();
+                        resolve({forced: true})
+                    }
+                });
+                client.end()
             })
         } else {
             return {forced: true}
@@ -72,27 +77,39 @@ const handler = function (req, res, next) {
                 headers: req.headers,
             };
             if (!!proxy_url) options.agent = new HttpProxyAgent(proxy_url);
-            return new Promise(resolve => http.get(req.url, options, resolve)).then(async (proxyRes) => {
-                console.log(req.url);
-                if (!(blacklist.includes(host) || req.method.toLowerCase() === 'post' || path1.endsWith('/'))) {
-                    if (proxyRes.headers['content-encoding'] && proxyRes.headers['content-encoding'] === 'gzip') {
-                        await proxyRes.pipe(zlib.createGunzip()).pipe(fs.createWriteStream(path1))
-                    } else {
-                        await proxyRes.pipe(fs.createWriteStream(path1))
-                    }
-                    let headers = JSON.parse(JSON.stringify(proxyRes.headers));
-                    fs.writeFileSync(path1 + '.header', JSON.stringify(headers, ' ', 2));
-                    console.log('saved: ', path1);
-                }
-                return {body: proxyRes, headers: proxyRes.headers}
-            })
+            if (req.method.toLowerCase() === 'get') {
+                return new Promise((resolve, reject) => {
+                    http.get(req.url, options, async (proxyRes) => {
+                        let headers = JSON.parse(JSON.stringify(proxyRes.headers));
+                        if (!(blacklist.includes(host) || req.method.toLowerCase() === 'post' || path1.endsWith('/'))) {
+                            if (proxyRes.headers['content-encoding'] && proxyRes.headers['content-encoding'] === 'gzip') {
+                                await proxyRes.pipe(zlib.createGunzip()).pipe(fs.createWriteStream(path1))
+                                delete headers['content-encoding'];
+                            } else {
+                                await proxyRes.pipe(fs.createWriteStream(path1))
+                            }
+                            fs.writeFileSync(path1 + '.header', JSON.stringify(headers, ' ', 2));
+                            console.log('saved: ', path1);
+                        }
+                        resolve({body: proxyRes, headers: proxyRes.headers, code: proxyRes.statusCode})
+                    });
+                })
+            } else {
+                options.method = req.method;
+                return new Promise((resolve, reject) => {
+                    let client = http.request(req.url, options, async (proxyRes) => {
+                        resolve({body: proxyRes, headers: proxyRes.headers, code: proxyRes.statusCode})
+                    });
+                    req.pipe(client);
+                })
+            }
         } else {
             return args
         }
     }).then((args) => {
         let headers = args.headers;
         headers['connection'] = 'close';
-        res.writeHead(200, headers);
+        res.writeHead(args.code, headers);
         args.body.pipe(res)
     }).catch((err) => {
         console.log(err)
