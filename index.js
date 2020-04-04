@@ -55,8 +55,10 @@ const handler = function (req, res, next) {
                 let remote_size = parseInt(proxyRes.headers['content-length']);
                 if (proxyRes.statusCode === 304 || local_time >= remote_time && local_size === remote_size) {
                     headers['content-length'] = fs.statSync(path1)['size'];
+                    proxyRes.destroy();
                     return {body: fs.createReadStream(path1), headers, forced: false};
                 } else {
+                    proxyRes.destroy();
                     console.log('update: ', path1);
                     return {forced: true}
                 }
@@ -79,10 +81,6 @@ const handler = function (req, res, next) {
                         await proxyRes.pipe(fs.createWriteStream(path1))
                     }
                     let headers = JSON.parse(JSON.stringify(proxyRes.headers));
-                    delete headers['content-encoding'];
-                    delete headers['proxy-connection'];
-                    delete headers['connection'];
-                    delete headers['keep-alive'];
                     fs.writeFileSync(path1 + '.header', JSON.stringify(headers, ' ', 2));
                     console.log('saved: ', path1);
                 }
@@ -94,8 +92,6 @@ const handler = function (req, res, next) {
     }).then((args) => {
         let headers = args.headers;
         headers['connection'] = 'close';
-        delete headers['proxy-connection'];
-        delete headers['keep-alive'];
         res.writeHead(200, headers);
         args.body.pipe(res)
     }).catch((err) => {
