@@ -9,6 +9,7 @@ const HttpProxyAgent = require('http-proxy-agent');
 
 const cache_path = process.env.CACHE_DIR || 'cache';
 const proxy_url = process.env.PROXY || '';
+const use_translate = process.env.USE_TRANSLATE === 'true';
 
 const blacklist = [
     'game.granbluefantasy.jp'
@@ -17,7 +18,7 @@ const blacklist = [
 const handler = function (req, res, next) {
     console.log(req.method, ' ', req.url);
 
-    if (req.url.match(/^http:\/\/(game-a3\.granbluefantasy\.jp|gbf\.game-a3\.mbga\.jp)\/assets(_en)?\/\d+\/js[^\/]*\/config\.js$/g)) {
+    if (use_translate && req.url.match(/^http:\/\/(game-a3\.granbluefantasy\.jp|gbf\.game-a3\.mbga\.jp)\/assets(_en)?\/\d+\/js[^\/]*\/config\.js$/g)) {
         console.log('handle translate');
         res.writeHead(200, {
             'cache-control': 'no-cache, no-store, must-revalidate',
