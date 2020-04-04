@@ -92,7 +92,11 @@ const handler = function (req, res, next) {
             return args
         }
     }).then((args) => {
-        res.writeHead(200, args.headers);
+        let headers = args.headers;
+        headers['connection'] = 'close';
+        delete headers['proxy-connection'];
+        delete headers['keep-alive'];
+        res.writeHead(200, headers);
         args.body.pipe(res)
     }).catch((err) => {
         console.log(err)
