@@ -11,8 +11,12 @@ const cache_path = process.env.CACHE_DIR || 'cache';
 const proxy_url = process.env.PROXY || '';
 const use_translate = process.env.USE_TRANSLATE === 'true';
 
-const blacklist = [
-    'game.granbluefantasy.jp'
+const whitelist = [
+    'game-a.granbluefantasy.jp',
+    'game-a1.granbluefantasy.jp',
+    'game-a2.granbluefantasy.jp',
+    'game-a4.granbluefantasy.jp',
+    'game-a5.granbluefantasy.jp',
 ];
 
 const handler = function (req, res) {
@@ -25,7 +29,7 @@ const handler = function (req, res) {
             pragma: 'no-cache',
             expires: 0,
             'content-type': 'text/javascript;charset=UTF-8',
-            'content-length': fs.statSync('game-config.js')['size']
+            // 'content-length': fs.statSync('game-config.js')['size']
         });
         return fs.createReadStream('game-config.js').pipe(res);
     }
@@ -33,12 +37,12 @@ const handler = function (req, res) {
     let path1 = url(req.url).pathname;
     let host = url(req.url).resource;
     path1 = cache_path + '/' + host + (path1 === '' ? '/' : path1);
-    if (!blacklist.includes(host)) {
+    if (whitelist.includes(host)) {
         mkdirp(path.dirname(path1));
     }
     new Promise((resolve => fs.exists(path1, resolve))).then((exists) => {
         if (exists) {
-            if (blacklist.includes(host) || req.method.toLowerCase() !== 'get' || path1.endsWith('/')) {
+            if (!whitelist.includes(host) || req.method.toLowerCase() !== 'get' || path1.endsWith('/')) {
                 return {forced: true}
             }
             console.log('hit: ', path1);
@@ -55,7 +59,7 @@ const handler = function (req, res) {
                     let local_size = parseInt(headers['content-length']);
                     let remote_size = parseInt(proxyRes.headers['content-length']);
                     if (proxyRes.statusCode === 304 || local_time >= remote_time && local_size === remote_size) {
-                        headers['content-length'] = fs.statSync(path1)['size'];
+                        // headers['content-length'] = fs.statSync(path1)['size'];
                         delete headers['content-encoding'];
                         proxyRes.destroy();
                         resolve({body: fs.createReadStream(path1), headers, forced: false, code: 200})
@@ -80,7 +84,7 @@ const handler = function (req, res) {
                 return new Promise((resolve) => {
                     http.get(req.url, options, async (proxyRes) => {
                         let headers = JSON.parse(JSON.stringify(proxyRes.headers));
-                        if (!(blacklist.includes(host) || path1.endsWith('/'))) {
+                        if (!(!whitelist.includes(host) || path1.endsWith('/'))) {
                             let stream;
                             if (proxyRes.headers['content-encoding'] && proxyRes.headers['content-encoding'] === 'gzip') {
                                 stream = proxyRes.pipe(zlib.createGunzip()).pipe(fs.createWriteStream(path1));
@@ -91,7 +95,7 @@ const handler = function (req, res) {
                             stream.on('finish', () => {
                                 fs.writeFileSync(path1 + '.header', JSON.stringify(headers, ' ', 2));
                                 console.log('saved: ', path1);
-                                headers['content-length'] = fs.statSync(path1)['size'];
+                                // headers['content-length'] = fs.statSync(path1)['size'];
                                 resolve({body: fs.createReadStream(path1), headers: headers, code: proxyRes.statusCode})
                             })
                         } else {
