@@ -29,7 +29,7 @@ const handler = function (req, res) {
             pragma: 'no-cache',
             expires: 0,
             'content-type': 'text/javascript;charset=UTF-8',
-            // 'content-length': fs.statSync('game-config.js')['size']
+            'content-length': fs.statSync('game-config.js')['size']
         });
         return fs.createReadStream('game-config.js').pipe(res);
     }
@@ -117,7 +117,7 @@ const handler = function (req, res) {
         }
     }).then((args) => {
         let headers = args.headers;
-        headers['connection'] = 'close';
+        // headers['connection'] = 'close';
         res.writeHead(args.code, headers);
         args.body.pipe(res)
     }).catch((err) => {
